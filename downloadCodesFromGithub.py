@@ -1,6 +1,8 @@
 import subprocess
 import shlex
 import csv
+import timeit
+import time
 
 
 # read URLs from javaProjectsURLs.csv 
@@ -30,10 +32,13 @@ i=0
 for oneURL in URLs:
 	command = 'git clone git@github.com:'+oneURL+'.git'
 	print command
-	args=shlex.split(command)
-	print args
-	p=subprocess.Popen(args)
+	args = shlex.split(command)
+	startTime = timeit.default_timer()
+	p = subprocess.Popen(args)
 	p.wait()
+	usedTime = timeit.default_timer() - startTime
+	if usedTime < 3 :
+		time.sleep(3 - usedTime)
 	i=i+1
 	if i>20:  # the number of projects to download
 		break
