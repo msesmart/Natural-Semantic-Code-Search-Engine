@@ -12,7 +12,7 @@ def readUrls(fileName):
 	URLs = []
 	i = 0
 	for row in csvRows:
-		if i == 0:		# The first row is column 
+		if i == 0:		# The first row is column name, not project information.
 			i += 1
 			continue
 		index = row[1].find('repos') + 6
