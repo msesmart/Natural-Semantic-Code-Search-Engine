@@ -20,7 +20,7 @@ import structures.Post;
  * NOTE: the code here is only for demonstration purpose, 
  * please revise it accordingly to maximize your implementation's efficiency!
  */
-public class DocAnalyzer {
+public class PreprocessForWord2Vec {
 	
 	//a list of stopwords
 	int loadControl=0;
@@ -57,9 +57,9 @@ public class DocAnalyzer {
 	
 	int numLoadedFiles = 0；
 	int maxNumLoadedFiles = 2000;
-	StringBuilder resultSb;
+	StringBuilder codeSb, readMeSb;
 	
-	public DocAnalyzer(){
+	public PreprocessForWord2Vec(){
 		//all_stopwords=new HashSet<String>();
 		//original_stopwords=new HashSet<String>();
 		//new_stopwords=new HashSet<String>();
@@ -92,7 +92,8 @@ public class DocAnalyzer {
 			e.printStackTrace();
 		}
 		
-		resultSb = new StringBuilder();
+		codeSb = new StringBuilder();
+		readMeSb = new StringBuilder();
 	}
 	
 	//sample code for loading a list of stopwords from file
@@ -144,7 +145,6 @@ public class DocAnalyzer {
         }
 	}
 	
-	
 	public String parseConnectedWords(String text) {
 		StringBuilder sb = new StringBuilder();
 		int start = 0;
@@ -155,6 +155,7 @@ public class DocAnalyzer {
 				start = i;
 			}
 		}
+		sb.append(text.substring(start, i).toLowerCase() + " ");
 		return sb.toString();
 	}
 	
@@ -169,12 +170,21 @@ public class DocAnalyzer {
 				sb.append(parseConnectedWords(token)); 
 			}
 		}
-		
 		return sb.toString();
 	}
 	
 	public String parseClassMethods(String text) {
-		
+		String[] tokens = text.split("[^a-zA-Z']+");
+		StringBuilder sb = new StringBuilder();
+		for(String token : tokens) {
+			if(token.equals(token.toLowerCase()) || token.equals(token.toUpperCase())) {
+				sb.append(token.toLowerCase());
+				sb.append(" ");
+			} else {
+				sb.append(parseConnectedWords(token)); 
+			}
+		}
+		return sb.toString();
 	}
 	
 	public String loadCodeFile(String fileName) {
@@ -185,19 +195,10 @@ public class DocAnalyzer {
 			str = str.trim();  // remove the leading and trailing spaces.
 			while(str != null) {
 				if(str.startsWith("import")) {
-					
-				}else if(str.startsWith("public")) {
-					
-				}else if(str.startsWith("private")) {
-					
-				}else if(str.startsWith("class")) {
-					
-				}else if(str.startsWith("void")) {
-					
-				}
-				str = TokenizerNormalizationStemming(str);
-				sb.append(str);
-				
+					sb.append(parseImportedPackages(str));
+				}else if(str.startsWith("public") || str.startsWith("private") || str.startsWith("class") || str.startsWith("void")) {
+					sb.append(parseClassMethods(str));
+				} else ;				
 				str = in.readLine();
 				str = str.trim();
 			}
@@ -214,23 +215,53 @@ public class DocAnalyzer {
 	public void LoadFilesFromFolder(String folder, String prefix, String suffix) {
 		File dir = new File(folder); 
 		for(File f:dir.listFiles()){
-			if(f.isFile() && f.getName().endsWith(suffix)) {
+			if(f.isFile()) {
 				if(f.getName().toLowerCase().startsWith(prefix)) {
 					System.out.println(numLoadedFiles + " load README file"+" : " + f.getName());
-					resultSb.append(LoadReadMeFile(f.getName()));
+					readMeSb.append(LoadReadMeFile(f.getName()));
 					numLoadedFiles ++;
 				}
 				else if(f.getName().endsWith(suffix)) {
 					System.out.println(numLoadedFiles + " load code file"+" : "+f.getName());
-					
+					codeSb.append(loadCodeFile(f.getName()));
 					numLoadedFiles ++;
 				}
-				
 			}
 			else if(f.isDirectory())
 				LoadFilesFromFolder(f.getAbsolutePath(), prefix, suffix);
 		}
 		reviewsWriter.close();
+	}
+	
+	// save String data into file under folder 
+	
+	public void saveStringIntoFileUnderFolder(String folder, String fileName, String str) {
+		try {
+            File dir = new File(folder); 
+			File file = new File(dir, fileName);
+            FileOutputStream is = new FileOutputStream(file);
+            OutputStreamWriter osw = new OutputStreamWriter(is);    
+            Writer w = new BufferedWriter(osw);
+            w.write(str);
+            w.close();
+        } catch (IOException e) {
+            System.err.println("Problem writing to the file statsTest.txt");
+        }
+	}
+	
+	// parse each project folder and save the preprocessed data in their own folder.
+	public void parseProjects(String folder) {
+		File dir = new File(folder); 
+		for(File f:dir.listFiles()){ 
+			/* detect project folder */
+			if(f.isDirectory()) {
+				readMeSb.setLength(0);
+				codeSb.setLength(0);
+				LoadFilesFromFolder(f, "readme", "java");
+				saveStringIntoFileUnderFolder(f, "re.prepro", readMeSb.toString());
+				saveStringIntoFileUnderFolder(f, "code.prepro", codeSb.toString());
+			}
+		}
 	}
 	
 	public String TokenizerNormalizationStemming(String text){
@@ -250,8 +281,7 @@ public class DocAnalyzer {
 		}
 		return sb.toString();
 	}
-	
-	
+
 	// sort HashMap by value
 	private static Map<String, Integer> sortByComparator(Map<String, Integer> unsortMap) {
 		// Convert Map to List
@@ -291,7 +321,6 @@ public class DocAnalyzer {
 		return sortedMap;
 	}
 	
-
 	public static void saveMapToFile(String fileName,Map<Object,Object> map) {
 		try{
 			PrintWriter writer=new PrintWriter(fileName, "UTF-8");
@@ -308,11 +337,8 @@ public class DocAnalyzer {
 	
 	public static void main(String[] args)throws IOException{		
 		
-		DocAnalyzer analyzer = new DocAnalyzer();
-		
-		analyzer.LoadDirectory("C:/Dropbox/CS/Courses/InformationRetrieval/MP1/yelp", "json");
-		analyzer.unigramLanguageModel();
-		
+		PreprocessForWord2Vec preprocess = new PreprocessForWord2Vec();
+		preprocess.parseProjects();
 		System.out.println("Done ");
 	}
 }
