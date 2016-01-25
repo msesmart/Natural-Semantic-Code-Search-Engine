@@ -1,10 +1,10 @@
 /**
- *  Author: 	Chengjun Yuan  
- *				<cy3yb@virginia.edu>
+ *  	Author: 	Chengjun Yuan  
+ *			<cy3yb@virginia.edu>
  *	Time:		Jan. 2016 
  *	Purpose:	extract words from readme files and code files of a number of java projects.
  *	HowToRun:	compile:	javac -cp '.:libstemmer.jar' PreprocessForWord2Vec.java
-				run:		java -cp '.:libstemmer.jar' PreprocessForWord2Vec projectsFolder
+			run:		java -cp '.:libstemmer.jar' PreprocessForWord2Vec projectsFolder
  */
  
 import java.io.*;
