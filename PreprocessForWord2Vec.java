@@ -9,9 +9,10 @@
  
 import java.io.*;
 import java.util.*;
+import java.lang.*;
+import java.nio.channels.*;
 import java.nio.charset.Charset;
-import java.nio.file.Files;
-import java.nio.file.Paths;
+import java.nio.file.*;
 
 import org.tartarus.snowball.SnowballStemmer;
 import org.tartarus.snowball.ext.englishStemmer;
@@ -64,7 +65,7 @@ public class PreprocessForWord2Vec {
 		StringBuilder sb = new StringBuilder();
 		int start = 0; int i = 0;
 		for(i = 0; i < text.length(); i++) {
-			if(Character.isUpperCase(text.charAt(i))) {
+			if(Character.isUpperCase(text.charAt(i)) && i != 0) {
 				String token = text.substring(start, i).toLowerCase();
 				stemmer.setCurrent(token);
 				if(stemmer.stem()) token = stemmer.getCurrent();
@@ -76,6 +77,7 @@ public class PreprocessForWord2Vec {
 		stemmer.setCurrent(token);
 		if(stemmer.stem()) token = stemmer.getCurrent();
 		sb.append(token); sb.append(" ");
+		//System.out.println(text + " PCW " + sb.toString());
 		return sb.toString();
 	}
 	
@@ -212,14 +214,14 @@ public class PreprocessForWord2Vec {
 		return sb.toString();
 	}
 
-	public void WordsStatics(String folder) {
+	public void wordsStatics(String folder) {
 		try {
 			System.out.println("start words statics...");
 			File dir = new File(folder); 
 			for(File f:dir.listFiles()){ 
 				/* detect project folder */
 				if(f.isDirectory()) {
-					String line = new String(Files.readAllBytes(new File(f, "re.prepro").getAbsolutePath()));
+					String line = new String(Files.readAllBytes(Paths.get(f.getAbsolutePath(), "re.prepro")));
 					String[] tokens = line.split(" ");
 					for(String token : tokens) {
 						if(token != null && token.length() > 0) {
@@ -227,7 +229,7 @@ public class PreprocessForWord2Vec {
 							else wordsMap.put(token, 1);
 						}
 					}
-					line = new String(Files.readAllBytes(new File(f, "code.prepro").getAbsolutePath()));
+					line = new String(Files.readAllBytes(Paths.get(f.getAbsolutePath(), "code.prepro")));
 					tokens = line.split(" ");
 					for(String token : tokens) {
 						if(token != null && token.length() > 0) {
@@ -244,17 +246,17 @@ public class PreprocessForWord2Vec {
 	}
 	
 	public void generateStopWords(String stopWordsFileName, int offset) {
-		wordsMap = sortByComparator(wordsMap); // sort the wordsMap based on value
+		Map<String,Integer> sortedWordsMap = sortByComparator(wordsMap); // sort the wordsMap based on value
 		try {
 			/* write wordsStatics into file */
 			PrintWriter writer = new PrintWriter("wordsStatics.txt", "UTF-8");
-			for(Map.Entry<String, Integer> entry : wordsMap.entrySet()) {
-				writer.println(entry.key() + "," + String.valueOf(entry.value()));
-				if(entry.value() > offset) stopWords.add(entry.key());
+			for(String keyToken : sortedWordsMap.keySet()) {
+				writer.println(keyToken + "," + String.valueOf(sortedWordsMap.get(keyToken)));
+				if(sortedWordsMap.get(keyToken) > offset) stopWords.add(keyToken);
 			}
 			writer.close();
 			/* load old stopWords file */
-			String[] words = Files.readAllLines(stopWordsFileName, StandardCharsets.UTF_8);
+			List<String> words = Files.readAllLines(Paths.get(stopWordsFileName), Charset.defaultCharset());
 			for(String word : words) {
 				if(!word.isEmpty()) {
 					stemmer.setCurrent(word.toLowerCase());
@@ -277,22 +279,24 @@ public class PreprocessForWord2Vec {
 			for(File f:dir.listFiles()){ 
 				/* detect project folder */
 				if(f.isDirectory()) {
-					String line = new String(Files.readAllBytes(new File(f, "re.prepro").getAbsolutePath()));
+					sb.setLength(0);
+					String line = new String(Files.readAllBytes(Paths.get(f.getAbsolutePath(), "re.prepro")));
 					String[] tokens = line.split(" ");
 					for(String token : tokens) {
-						if(token != null && token.length() > 0) {
-							if(wordsMap.containsKey(token)) wordsMap.put(token, wordsMap.get(token) + 1);
-							else wordsMap.put(token, 1);
+						if(!token.isEmpty()) {
+							if(!stopWords.contains(token)) sb.append(token + " ");
 						}
 					}
-					line = new String(Files.readAllBytes(new File(f, "code.prepro").getAbsolutePath()));
+					saveStringIntoFileUnderFolder(f.getAbsolutePath(), "re.prepro", sb.toString());
+					sb.setLength(0);
+					line = new String(Files.readAllBytes(Paths.get(f.getAbsolutePath(), "code.prepro")));
 					tokens = line.split(" ");
 					for(String token : tokens) {
-						if(token != null && token.length() > 0) {
-							if(wordsMap.containsKey(token)) wordsMap.put(token, wordsMap.get(token) + 1);
-							else wordsMap.put(token, 1);
+						if(!token.isEmpty()) {
+							if(!stopWords.contains(token)) sb.append(token + " ");
 						}
 					}
+					saveStringIntoFileUnderFolder(f.getAbsolutePath(), "code.prepro", sb.toString());
 				}
 			}
 			System.out.println("Finish remove stopWords !! ");
@@ -361,6 +365,9 @@ public class PreprocessForWord2Vec {
 		}
 		PreprocessForWord2Vec preprocess = new PreprocessForWord2Vec();
 		preprocess.parseProjects(args[0]);
+		preprocess.wordsStatics(args[0]);
+		preprocess.generateStopWords("english.stop", 150);
+		preprocess.removeStopWords(args[0]);
 		System.out.println("Done ");
 	}
 }
