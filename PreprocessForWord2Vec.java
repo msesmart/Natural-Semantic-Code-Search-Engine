@@ -1,10 +1,10 @@
 /**
- *  	Author: 	Chengjun Yuan  
- *			<cy3yb@virginia.edu>
+ *  Author: 	Chengjun Yuan  
+ *				<cy3yb@virginia.edu>
  *	Time:		Jan. 2016 
  *	Purpose:	extract words from readme files and code files of a number of java projects.
  *	HowToRun:	compile:	javac -cp '.:libstemmer.jar' PreprocessForWord2Vec.java
-			run:		java -cp '.:libstemmer.jar' PreprocessForWord2Vec projectsFolder
+				run:		java -cp '.:libstemmer.jar' PreprocessForWord2Vec projectsFolder
  */
  
 import java.io.*;
@@ -20,7 +20,7 @@ import org.tartarus.snowball.ext.englishStemmer;
 public class PreprocessForWord2Vec {
 	int numLoadedFiles = 0;
 	int maxNumLoadedFiles = 2000;
-	StringBuilder codeSb, readMeSb;
+	StringBuilder codeSb, readMeSb, commitSb;
 	SnowballStemmer stemmer;
 	HashMap<String, Integer> wordsMap;
 	HashSet<String> stopWords;
@@ -35,10 +35,39 @@ public class PreprocessForWord2Vec {
 		
 		codeSb = new StringBuilder();
 		readMeSb = new StringBuilder();
+		commitSb = new StringBuilder();
 		stemmer = new englishStemmer();
 		wordsMap = new HashMap<String, Integer>();
 		stopWords = new HashSet<String>();
 		 
+	}
+	
+	public void dumpGitLog(String topFolder){
+		File dir = new File(topFolder);
+		File[] allFiles = dir.listFiles();
+		ArrayList<File> allDirs = new ArrayList<File>();
+		for (File file : allFiles) {
+			if (file.isDirectory()) {
+				allDirs.add(file.getAbsoluteFile());
+			}
+		}
+		for (File folder : allDirs) {
+			try {
+				System.out.println(folder.getAbsolutePath());
+				String[] cmd = new String[]{"/bin/bash", "-c", "git log --date=iso --no-merges > change_log.txt"};
+				ProcessBuilder pb = new ProcessBuilder().command(cmd).directory(folder);
+				Process p = pb.start();
+				int exit = p.waitFor();
+				if(exit != 0){
+					System.out.println("Not normal process **********");
+					//System.exit(exit);
+				} 
+			} catch (IOException e) {
+				e.printStackTrace();
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+		}
 	}
 	
 	public String LoadReadMeFile(String fileName) {
@@ -139,6 +168,38 @@ public class PreprocessForWord2Vec {
         }
 	}
 	
+	/* read commit message from commit file - change_log.txt */
+	public String loadCommitFile(String fileName){
+        try {
+            BufferedReader reader = new BufferedReader(new InputStreamReader(new FileInputStream(fileName), "UTF-8"));
+            StringBuilder sb = new StringBuilder(); String line;  String author; String date; String emailAddress; String message; 
+            String modifiedFileName; String commitID; String indexID; String patchID;
+            line=reader.readLine();
+            while(line!=null){
+                if(line.startsWith("commit")){
+                    commitID=new String(line.substring(7));
+                    line = reader.readLine();
+                    author = new String(line.substring(line.indexOf(" ")+1,line.lastIndexOf(" ")));
+					emailAddress = new String(line.substring(line.lastIndexOf(" ")+1));
+                    line = reader.readLine();
+                    date = new String(line.substring(8));
+					//sb.setLength(0);
+                    while((line = reader.readLine()) != null && (!line.startsWith("commit"))){
+                        sb.append(line); sb.append(" ");
+                    }
+                }
+				else line=reader.readLine();
+            }
+            reader.close();
+			message = TokenizerNormalizationStemming(sb.toString());
+			return message;
+        }catch(IOException e){
+            System.err.format("[Error]Failed to open file %s ", fileName);
+            e.printStackTrace();
+			return null;
+        }
+    }
+	
 	// recursively load files in a directory 
 	public void LoadFilesFromFolder(String folder, String prefix, String suffix) {
 		File dir = new File(folder); 
@@ -148,10 +209,12 @@ public class PreprocessForWord2Vec {
 					//System.out.println(numLoadedFiles + " load README file"+" : " + f.getName());
 					readMeSb.append(LoadReadMeFile(f.getAbsolutePath()));
 					numLoadedFiles ++;
-				}
-				else if(f.getName().endsWith(suffix)) {
+				} else if(f.getName().endsWith(suffix)) {
 					//System.out.println(numLoadedFiles + " load code file"+" : "+f.getName());
 					codeSb.append(loadCodeFile(f.getAbsolutePath()));
+					numLoadedFiles ++;
+				} else if(f.getName().toLowerCase().startsWith("change_log")) {
+					commitSb.append(loadCommitFile(f.getAbsolutePath()));
 					numLoadedFiles ++;
 				}
 			}
@@ -186,9 +249,11 @@ public class PreprocessForWord2Vec {
 				System.out.println("project #"+ String.valueOf(i) + f.getAbsolutePath());
 				readMeSb.setLength(0);
 				codeSb.setLength(0);
+				commitSb.setLength(0);
 				LoadFilesFromFolder(f.getAbsolutePath(), "readme", "java");
 				saveStringIntoFileUnderFolder(f.getAbsolutePath(), "re.prepro", readMeSb.toString());
 				saveStringIntoFileUnderFolder(f.getAbsolutePath(), "code.prepro", codeSb.toString());
+				saveStringIntoFileUnderFolder(f.getAbsolutePath(), "commit.prepro", commitSb.toString());
 			}
 			i ++;
 			//if(i >= 2) break;
@@ -216,26 +281,23 @@ public class PreprocessForWord2Vec {
 
 	public void wordsStatics(String folder) {
 		try {
+			String[] preproFiles = {"re.prepro", "code.prepro", "commit.prepro"};
 			System.out.println("start words statics...");
 			File dir = new File(folder); 
 			for(File f:dir.listFiles()){ 
 				/* detect project folder */
 				if(f.isDirectory()) {
-					String line = new String(Files.readAllBytes(Paths.get(f.getAbsolutePath(), "re.prepro")));
-					String[] tokens = line.split(" ");
-					for(String token : tokens) {
-						if(token != null && token.length() > 0) {
-							if(wordsMap.containsKey(token)) wordsMap.put(token, wordsMap.get(token) + 1);
-							else wordsMap.put(token, 1);
-						}
-					}
-					line = new String(Files.readAllBytes(Paths.get(f.getAbsolutePath(), "code.prepro")));
-					tokens = line.split(" ");
-					for(String token : tokens) {
-						if(token != null && token.length() > 0) {
-							if(wordsMap.containsKey(token)) wordsMap.put(token, wordsMap.get(token) + 1);
-							else wordsMap.put(token, 1);
-						}
+					for(String preproFile : preproFiles) {
+						if(new File(f, preproFile).exists()) {
+							String line = new String(Files.readAllBytes(Paths.get(f.getAbsolutePath(), preproFile)));
+							String[] tokens = line.split(" ");
+							for(String token : tokens) {
+								if(token != null && token.length() > 0) {
+									if(wordsMap.containsKey(token)) wordsMap.put(token, wordsMap.get(token) + 1);
+									else wordsMap.put(token, 1);
+								}
+							}
+						} else System.out.println(f.getAbsolutePath() + "  " + preproFile);
 					}
 				}
 			}
@@ -273,30 +335,26 @@ public class PreprocessForWord2Vec {
 	
 	public void removeStopWords(String folder) {
 		try {
+			String[] preproFiles = {"re.prepro", "code.prepro", "commit.prepro"};
 			System.out.println("start remove stopWords...");
 			File dir = new File(folder); 
 			StringBuilder sb = new StringBuilder();
 			for(File f:dir.listFiles()){ 
 				/* detect project folder */
 				if(f.isDirectory()) {
-					sb.setLength(0);
-					String line = new String(Files.readAllBytes(Paths.get(f.getAbsolutePath(), "re.prepro")));
-					String[] tokens = line.split(" ");
-					for(String token : tokens) {
-						if(!token.isEmpty()) {
-							if(!stopWords.contains(token)) sb.append(token + " ");
+					for(String preproFile : preproFiles) {
+						if(new File(f, preproFile).exists()) {
+							sb.setLength(0);
+							String line = new String(Files.readAllBytes(Paths.get(f.getAbsolutePath(), preproFile)));
+							String[] tokens = line.split(" ");
+							for(String token : tokens) {
+								if(!token.isEmpty()) {
+									if(!stopWords.contains(token)) sb.append(token + " ");
+								}
+							}
+							saveStringIntoFileUnderFolder(f.getAbsolutePath(), "rs_" + preproFile, sb.toString());
 						}
 					}
-					saveStringIntoFileUnderFolder(f.getAbsolutePath(), "re.prepro", sb.toString());
-					sb.setLength(0);
-					line = new String(Files.readAllBytes(Paths.get(f.getAbsolutePath(), "code.prepro")));
-					tokens = line.split(" ");
-					for(String token : tokens) {
-						if(!token.isEmpty()) {
-							if(!stopWords.contains(token)) sb.append(token + " ");
-						}
-					}
-					saveStringIntoFileUnderFolder(f.getAbsolutePath(), "code.prepro", sb.toString());
 				}
 			}
 			System.out.println("Finish remove stopWords !! ");
@@ -344,26 +402,13 @@ public class PreprocessForWord2Vec {
 		return sortedMap;
 	}
 	
-	public static void saveMapToFile(String fileName,Map<Object,Object> map) {
-		try{
-			PrintWriter writer=new PrintWriter(fileName, "UTF-8");
-			for(Object key:map.keySet()){
-				writer.println(key+" "+map.get(key));
-			}
-			writer.close();
-		}catch(FileNotFoundException ex){
-            ex.printStackTrace();
-        }catch(IOException e){
-        	e.printStackTrace();
-        }
-	}
-	
 	public static void main(String[] args)throws IOException{		
 		if(args.length != 1) {
 			System.out.println("input command : java PreprocessForWord2Vec folder");
 			System.exit(0);
 		}
 		PreprocessForWord2Vec preprocess = new PreprocessForWord2Vec();
+		preprocess.dumpGitLog(args[0]);
 		preprocess.parseProjects(args[0]);
 		preprocess.wordsStatics(args[0]);
 		preprocess.generateStopWords("english.stop", 150);
@@ -371,4 +416,5 @@ public class PreprocessForWord2Vec {
 		System.out.println("Done ");
 	}
 }
+
 
