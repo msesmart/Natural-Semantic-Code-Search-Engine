@@ -51,9 +51,11 @@ public class PreprocessForWord2Vec {
 				allDirs.add(file.getAbsoluteFile());
 			}
 		}
+		int i = 0;
 		for (File folder : allDirs) {
 			try {
-				System.out.println(folder.getAbsolutePath());
+				i++;
+				System.out.println(String.valueOf(i) + folder.getAbsolutePath());
 				String[] cmd = new String[]{"/bin/bash", "-c", "git log --date=iso --no-merges > change_log.txt"};
 				ProcessBuilder pb = new ProcessBuilder().command(cmd).directory(folder);
 				Process p = pb.start();
@@ -202,24 +204,30 @@ public class PreprocessForWord2Vec {
 	
 	// recursively load files in a directory 
 	public void LoadFilesFromFolder(String folder, String prefix, String suffix) {
-		File dir = new File(folder); 
-		for(File f:dir.listFiles()){
-			if(f.isFile()) {
-				if(f.getName().toLowerCase().startsWith(prefix)) {
-					//System.out.println(numLoadedFiles + " load README file"+" : " + f.getName());
-					readMeSb.append(LoadReadMeFile(f.getAbsolutePath()));
-					numLoadedFiles ++;
-				} else if(f.getName().endsWith(suffix)) {
-					//System.out.println(numLoadedFiles + " load code file"+" : "+f.getName());
-					codeSb.append(loadCodeFile(f.getAbsolutePath()));
-					numLoadedFiles ++;
-				} else if(f.getName().toLowerCase().startsWith("change_log")) {
-					commitSb.append(loadCommitFile(f.getAbsolutePath()));
-					numLoadedFiles ++;
+		//File dir = new File(folder); 
+		Queue<File> queue = new LinkedList<File>();
+		queue.add(new File(folder));
+		while(!queue.isEmpty()) {
+			File dir = queue.poll();
+			for(File f : dir.listFiles()){
+				if(f.isFile()) {
+					if(f.getName().toLowerCase().startsWith(prefix)) {
+						//System.out.println(numLoadedFiles + " load README file"+" : " + f.getName());
+						readMeSb.append(LoadReadMeFile(f.getAbsolutePath()));
+						numLoadedFiles ++;
+					} else if(f.getName().endsWith(suffix)) {
+						//System.out.println(numLoadedFiles + " load code file"+" : "+f.getName());
+						codeSb.append(loadCodeFile(f.getAbsolutePath()));
+						numLoadedFiles ++;
+					} else if(f.getName().toLowerCase().startsWith("change_log")) {
+						commitSb.append(loadCommitFile(f.getAbsolutePath()));
+						numLoadedFiles ++;
+					}
 				}
+				else if(f.isDirectory())
+					queue.add(f);
+					//LoadFilesFromFolder(f.getAbsolutePath(), prefix, suffix);
 			}
-			else if(f.isDirectory())
-				LoadFilesFromFolder(f.getAbsolutePath(), prefix, suffix);
 		}
 		//reviewsWriter.close();
 	}
@@ -352,7 +360,7 @@ public class PreprocessForWord2Vec {
 									if(!stopWords.contains(token)) sb.append(token + " ");
 								}
 							}
-							saveStringIntoFileUnderFolder(f.getAbsolutePath(), "rs_" + preproFile, sb.toString());
+							saveStringIntoFileUnderFolder(f.getAbsolutePath(), preproFile + "_rs", sb.toString());
 						}
 					}
 				}
@@ -408,7 +416,7 @@ public class PreprocessForWord2Vec {
 			System.exit(0);
 		}
 		PreprocessForWord2Vec preprocess = new PreprocessForWord2Vec();
-		preprocess.dumpGitLog(args[0]);
+		//preprocess.dumpGitLog(args[0]);
 		preprocess.parseProjects(args[0]);
 		preprocess.wordsStatics(args[0]);
 		preprocess.generateStopWords("english.stop", 150);
