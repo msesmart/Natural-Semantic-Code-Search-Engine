@@ -204,31 +204,44 @@ public class PreprocessForWord2Vec {
 	
 	// recursively load files in a directory 
 	public void LoadFilesFromFolder(String folder, String prefix, String suffix) {
-		//File dir = new File(folder); 
+		File dir = new File(folder); 
+		HashSet<File> set = new HashSet<File>();
 		Queue<File> queue = new LinkedList<File>();
-		queue.add(new File(folder));
-		while(!queue.isEmpty()) {
-			File dir = queue.poll();
+		queue.add(dir); set.add(dir); int i = 0;
+		double folderSize = 0.0; double folderSizeThreshold = 20.0;
+		while(!queue.isEmpty() && folderSize < folderSizeThreshold) {
+			dir = queue.poll(); i++;
+			//System.out.print(String.valueOf(i) + " ");
+			if(dir.list() == null || dir.listFiles().length == 0) continue;
 			for(File f : dir.listFiles()){
-				if(f.isFile()) {
-					if(f.getName().toLowerCase().startsWith(prefix)) {
+				if(f != null && f.isFile() && !f.isHidden()) {
+					if(i == 1 && f.getName().toLowerCase().startsWith(prefix)) {
 						//System.out.println(numLoadedFiles + " load README file"+" : " + f.getName());
 						readMeSb.append(LoadReadMeFile(f.getAbsolutePath()));
 						numLoadedFiles ++;
+						folderSize += f.length() / 1024.0 / 1024.0;
 					} else if(f.getName().endsWith(suffix)) {
 						//System.out.println(numLoadedFiles + " load code file"+" : "+f.getName());
 						codeSb.append(loadCodeFile(f.getAbsolutePath()));
 						numLoadedFiles ++;
+						folderSize += f.length() / 1024.0 / 1024.0;
 					} else if(f.getName().toLowerCase().startsWith("change_log")) {
 						commitSb.append(loadCommitFile(f.getAbsolutePath()));
 						numLoadedFiles ++;
+						folderSize += f.length() / 1024.0 / 1024.0;
 					}
 				}
-				else if(f.isDirectory())
-					queue.add(f);
-					//LoadFilesFromFolder(f.getAbsolutePath(), prefix, suffix);
+				else if(f != null && f.isDirectory() && !f.isHidden()) {
+					if(!set.contains(f)) {
+						queue.add(f);
+						set.add(f);
+					}
+				}
+				if(folderSize > folderSizeThreshold) break;
+				//LoadFilesFromFolder(f.getAbsolutePath(), prefix, suffix);
 			}
 		}
+		System.out.print(" size = " + String.valueOf(folderSize));
 		//reviewsWriter.close();
 	}
 	
@@ -247,13 +260,25 @@ public class PreprocessForWord2Vec {
         }
 	}
 	
+	// check whether this project has been parsed before.
+	public boolean hasBeenParsed(File folder) {
+		String[] preproFiles = {"re.prepro", "code.prepro", "commit.prepro"};
+		for(String preproFile : preproFiles) {
+			File file = new File(folder, preproFile);
+			if(!file.exists()) return false;
+		}
+		//return true;
+		return false;
+	}
+
+	
 	// parse each project folder and save the preprocessed data in their own folder.
 	public void parseProjects(String folder) {
 		File dir = new File(folder); 
 		int i = 1;
 		for(File f:dir.listFiles()){ 
 			/* detect project folder */
-			if(f.isDirectory()) {
+			if(f.isDirectory() && !hasBeenParsed(f)) {
 				System.out.println("project #"+ String.valueOf(i) + f.getAbsolutePath());
 				readMeSb.setLength(0);
 				codeSb.setLength(0);
@@ -262,7 +287,7 @@ public class PreprocessForWord2Vec {
 				saveStringIntoFileUnderFolder(f.getAbsolutePath(), "re.prepro", readMeSb.toString());
 				saveStringIntoFileUnderFolder(f.getAbsolutePath(), "code.prepro", codeSb.toString());
 				saveStringIntoFileUnderFolder(f.getAbsolutePath(), "commit.prepro", commitSb.toString());
-			}
+			} else System.out.println("project #"+ String.valueOf(i));
 			i ++;
 			//if(i >= 2) break;
 		}
@@ -419,7 +444,7 @@ public class PreprocessForWord2Vec {
 		//preprocess.dumpGitLog(args[0]);
 		preprocess.parseProjects(args[0]);
 		preprocess.wordsStatics(args[0]);
-		preprocess.generateStopWords("english.stop", 150);
+		preprocess.generateStopWords("english.stop", 300);
 		preprocess.removeStopWords(args[0]);
 		System.out.println("Done ");
 	}
