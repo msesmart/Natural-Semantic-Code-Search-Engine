@@ -94,5 +94,7 @@ if __name__ == "__main__":
   
   print(ldamodel.print_topics(num_topics = 200, num_words = 30))
   f = open("ldamodel.txt", "w")
-  f.write(ldamodel.print_topics(num_topics = 200, num_words = 30))
+  for line in ldamodel.print_topics(num_topics = 200, num_words = 30):
+    f.write(repr(line))
+    f.write("\n")
   f.close()
