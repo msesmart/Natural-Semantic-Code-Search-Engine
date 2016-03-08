@@ -68,14 +68,13 @@ doc_e = "Health professionals say that brocolli is good for your health."
 #doc_set = [doc_a, doc_b, doc_c, doc_d, doc_e]
 '''
 
-
-
-
 if __name__ == "__main__":
   if len(sys.argv) != 2:
     print "Usage: python LDA_descriptionCode.py projectDescriptionPath"
     sys.exit()
-    
+  
+  numTopics = 100
+  
   print "load data from directory - ", sys.argv[1]
   doc_set = loadData(sys.argv[1])
   
@@ -90,11 +89,50 @@ if __name__ == "__main__":
 
   # generate LDA model
   #ldamodel = gensim.models.ldamodel.LdaModel(corpus, num_topics = 200, id2word = dictionary, passes = 30)
-  ldamodel = gensim.models.LdaMulticore(corpus, num_topics = 200, id2word = dictionary, passes = 30, workers = 7)
+  ldamodel = gensim.models.LdaMulticore(corpus, num_topics = numTopics, id2word = dictionary, passes = 20, workers = 7)
   
-  print(ldamodel.print_topics(num_topics = 200, num_words = 30))
+  print(ldamodel.print_topics(num_topics = numTopics, num_words = 20))
   f = open("ldamodel.txt", "w")
-  for line in ldamodel.print_topics(num_topics = 200, num_words = 30):
+  for line in ldamodel.print_topics(num_topics = numTopics, num_words = 20):
     f.write(repr(line))
     f.write("\n")
+  f.close()
+  
+  topic_docs = [[] for x in range(numTopics)]
+  i = 0
+  doc_topic_probability = 0.0
+  topicId = 0
+  for doc_bow in corpus:
+    #doc_topics = ldamodel[doc_bow]
+    doc_topics = ldamodel.get_document_topics(doc_bow)
+    #print i, type(doc_topics)
+    if len(doc_topics) == 0: continue
+    print doc_topics[0]
+    doc_topic_probability = 0.0
+    for topicId_probability in doc_topics:
+      if topicId_probability[1] > doc_topic_probability:
+        doc_topic_probability = topicId_probability[1]
+        topicId = topicId_probability[0]
+    #topic_docs[topicId].append(doc_bow)
+    topic_docs[topicId].append(doc_set[i])
+    topic_docs[topicId].append(doc_topic_probability)
+    i = i + 1
+	
+  f = open("lda_topics_projects.csv", "w")
+  i = 0
+  for line in ldamodel.print_topics(num_topics = numTopics, num_words = 20):
+    f.write(repr(line))
+    if len(topic_docs[i]) > 0:
+      j = 0
+      while j < len(topic_docs[i]):
+        f.write(",")
+        f.write(topic_docs[i][j])
+        j = j + 1
+        f.write(",")
+        f.write(str(topic_docs[i][j]))
+        j = j + 1
+        f.write("\n")
+    else:		
+      f.write("\n")
+    i = i + 1
   f.close()
