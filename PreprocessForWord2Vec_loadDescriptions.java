@@ -4,8 +4,8 @@
  *	Time:		Jan. 2016
  *	Purpose:	extract words from readme files and code files of a number of java projects.
 				Mar.22 2016 this code is only used to parse descriptions of projects from Github.
- *	HowToRun:	compile:	javac -cp '.:libstemmer.jar' PreprocessForWord2Vec.java
-				run:		java -cp '.:libstemmer.jar' PreprocessForWord2Vec projectsFolder
+ *	HowToRun:	compile:	javac PreprocessForWord2Vec_loadDescriptions.java
+				run:		java PreprocessForWord2Vec_loadDescriptions projectsFolder
  *  Version:	Feb.15 2016	change the algorithm to filter the stopwords and remove the words whose length exceed ten.
 				Feb.21 2016 add 'ctags' to parse the project code files, which supports many kinds of languages.
 				Feb.24 2016 remove the consideration of commit messages. Add the consideration of description of projects.
