@@ -19,6 +19,7 @@ import java.net.*;
 import java.nio.channels.*;
 import java.nio.charset.Charset;
 import java.nio.file.*;
+import java.nio.file.StandardCopyOption.*;
 
 import org.tartarus.snowball.SnowballStemmer;
 import org.tartarus.snowball.ext.englishStemmer;
@@ -28,6 +29,7 @@ public class PreprocessForWord2Vec {
 	int maxNumLoadedFiles = 2000;
 	int numProjects = 0;
 	int upperLimitNumOfSingleWord = 3;  // the upper limit number of single word in the readme and code for each project.
+	Double[] termsFrequencyWeight = {2.0, 4.0, 2.0, 1.0};
 	StringBuilder descriptionSb, codeSb, readMeSb, commitSb;
 	String projectsDirectory;
 	SnowballStemmer stemmer;
@@ -37,6 +39,8 @@ public class PreprocessForWord2Vec {
 	HashSet<String> stopWords;
 	HashSet<String> initialStopWords;
 	HashSet<String> omittedProjects;
+	HashMap<String, Integer> projectsNo; // each project has its unique No.  projectName -> No.
+	String[] noProjects; // No. -> projectName
 	
  
 	public PreprocessForWord2Vec(){
@@ -56,11 +60,48 @@ public class PreprocessForWord2Vec {
 		stopWords = new HashSet<String>();
 		initialStopWords = new HashSet<String>();
 		omittedProjects = new HashSet<String>();
+		projectsNo =  new HashMap<String, Integer>();
 	}
+	
 	public void numOfProjects(String folder) {
-		projectsDirectory = folder;
-		File dir = new File(projectsDirectory);
-		numProjects = dir.listFiles().length;
+		try{
+			projectsDirectory = folder;
+			File dir = new File(projectsDirectory);
+			File[] projectDirs = dir.listFiles();
+			numProjects = projectDirs.length;
+			noProjects = new String[numProjects];
+			
+			File projectsNoFile = new File(dir, "projectsNo.HashMap");
+			if(projectsNoFile.exists()) {
+				System.out.println("projectsNoFile exists... read projectsNo.HashMap... ");
+				FileInputStream fis = new FileInputStream(projectsNoFile); ObjectInputStream ois = new ObjectInputStream(fis);
+				projectsNo = (HashMap)ois.readObject(); ois.close(); fis.close();
+				for(String projectName_ : projectsNo.keySet()) {
+					int i = projectsNo.get(projectName_) - 1;
+					noProjects[i] = projectName_;
+				}
+			} else {
+				System.out.println("projectsNoFile No exists...");
+				for(int i = 0; i < numProjects; i ++) {
+					noProjects[i] = projectDirs[i].getName();
+					projectsNo.put(noProjects[i], i + 1);
+				}
+				saveObjectToFile(folder, "projectsNo.HashMap", projectsNo);
+			}
+			
+			PrintWriter writer = new PrintWriter("projectsNameList.txt", "UTF-8");
+			for(int i = 0; i < numProjects; i++) {
+				writer.println(noProjects[i]);
+			}
+			writer.close();
+		} catch (FileNotFoundException ex) {
+			ex.printStackTrace();
+		} catch (IOException e) {
+			e.printStackTrace();
+		} catch(ClassNotFoundException c) {
+			System.out.println("Class not found"); c.printStackTrace(); return;
+		}
+		
 	}
 	
 	public void dumpGitLog(String topFolder){
@@ -577,6 +618,7 @@ public class PreprocessForWord2Vec {
 		}
 	}
 	
+	/* stemmer the words in the string sentence. */
 	public String stringStemmer(String text) {
 		SnowballStemmer stemmer_ = new englishStemmer();
 		String[] tokens = text.split(" ");
@@ -709,10 +751,23 @@ public class PreprocessForWord2Vec {
 		service.shutdown();
 	}
 	
+	public void parseAndStemProjectsName(String folder) {
+		File dir = new File(folder);
+		for(File f : dir.listFiles()){
+			if(f.isDirectory()) {
+				String projectName = f.getName();
+				projectName = parseImportedPackages(projectName);
+				projectName = stringStemmer(projectName);
+				saveStringIntoFileUnderFolder(f.getAbsolutePath(), "projectName.prepro_stem", projectName);
+			}
+		}
+		System.out.println("Finished parse And Stem ProjectsName.. ");
+	}
 	public String TokenizerNormalization(String text){
 		if(text == null || text.length() == 0)return "";
 		StringBuilder sb = new StringBuilder();
-		text = text.replaceAll("[^a-zA-Z\\s]", " ");
+		//text = text.replaceAll("[^a-zA-Z\\s]", " ");
+		text = text.replaceAll("[^a-zA-Z]", " ");
 		String[] tokens = text.split(" ");
 		//String[] tokens = text.split("[^a-zA-Z']+");
 		
@@ -746,11 +801,43 @@ public class PreprocessForWord2Vec {
         }
 	}
 
+	public void removeTabSpace(String folder) {
+		try {
+			String[] preproFiles = {"projectName.prepro_stem", "description.prepro_stem", "re.prepro_stem", "code.prepro_stem"};
+			System.out.println("start remove Tap Space...");
+			File dir = new File(folder);
+			StringBuilder sb = new StringBuilder();
+			
+			for(File f : dir.listFiles()){
+				/* detect project folder */
+				if(f.isDirectory()) {
+					for(String preproFile : preproFiles) {
+						if(new File(f, preproFile).exists()) {
+							sb.setLength(0);
+							String line = new String(Files.readAllBytes(Paths.get(f.getAbsolutePath(), preproFile)));
+							line = line.replaceAll("\t", " ");
+							String[] tokens = line.split(" ");
+							for(String token : tokens) {
+								if(!token.isEmpty() && !token.equals(" ")) {
+									sb.append(token + " ");
+								}
+							}
+							saveStringIntoFileUnderFolder(f.getAbsolutePath(), preproFile, sb.toString());
+						}
+					}
+				}
+			}
+			System.out.println("Finish remove Tap Space !! ");
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+	
 	public void wordsStatics(String folder) {
 		try {
 			//String[] preproFiles = {"re.prepro", "code.prepro", "commit.prepro"};
-			String[] preproFiles = {"description.prepro_stem", "re.prepro_stem", "code.prepro_stem"};
-			Double[] termsFrequencyWeight = {2.0, 3.0, 2.0, 1.0};
+			String[] preproFiles = {"projectName.prepro_stem", "description.prepro_stem", "re.prepro_stem", "code.prepro_stem"};
+			
 			System.out.println("start words statics...");
 			File dir = new File(folder);
 			int projectsCount = 0;
@@ -774,17 +861,17 @@ public class PreprocessForWord2Vec {
 										wordsSetInSingleProject.put(token, 1);
 										if(!wordsDocFreq.containsKey(token)) wordsDocFreq.put(token, 1);
 										else wordsDocFreq.put(token, wordsDocFreq.get(token) + 1);
-										if(!wordsTermFreq.containsKey(token)) wordsTermFreq.put(token, termsFrequencyWeight[i + 1]);
-										else wordsTermFreq.put(token, wordsTermFreq.get(token)+ termsFrequencyWeight[i + 1]);
+										if(!wordsTermFreq.containsKey(token)) wordsTermFreq.put(token, termsFrequencyWeight[i]);
+										else wordsTermFreq.put(token, wordsTermFreq.get(token)+ termsFrequencyWeight[i]);
 									} else if(wordsSetInSingleProject.get(token) < upperLimitNumOfSingleWord) {
 										wordsSetInSingleProject.put(token, wordsSetInSingleProject.get(token) + 1);
-										if(!wordsTermFreq.containsKey(token)) wordsTermFreq.put(token, termsFrequencyWeight[i + 1]);
-										else wordsTermFreq.put(token, wordsTermFreq.get(token)+ termsFrequencyWeight[i + 1]);
+										if(!wordsTermFreq.containsKey(token)) wordsTermFreq.put(token, termsFrequencyWeight[i]);
+										else wordsTermFreq.put(token, wordsTermFreq.get(token)+ termsFrequencyWeight[i]);
 									}
 									
 								}
 							}
-						} else System.out.println(f.getAbsolutePath() + "  " + preproFiles[i]);
+						} else System.out.println(f.getName() + "  " + preproFiles[i] + " Not exists");
 					}
 					//saveObjectToFile(f.getAbsolutePath(), "wordsSetInSingleProject.HashMap", wordsSetInSingleProject);
 				}
@@ -807,7 +894,7 @@ public class PreprocessForWord2Vec {
 			System.out.println("read wordsDocFreq.HashMap ");
 			FileInputStream fis = new FileInputStream("wordsDocFreq.HashMap"); ObjectInputStream ois = new ObjectInputStream(fis);
 			wordsDocFreq = (HashMap)ois.readObject(); ois.close(); fis.close();
-			Map<String,Integer> sortedWordsMap = sortByComparator(wordsDocFreq); // sort the wordsMap based on value
+			Map<String, Integer> sortedWordsMap = sortByComparator(wordsDocFreq); // sort the wordsMap based on value
 			/* write wordsStatics into file */
 			int offNum = (int)(offset * numProjects);
 			System.out.printf("offNum for generate StopWords is %d \n", offNum);
@@ -835,6 +922,7 @@ public class PreprocessForWord2Vec {
 				writer.println(keyToken);
 			}
 			writer.close();
+			System.out.println("finished generateStopWords.. ");
 		} catch(FileNotFoundException ex) {
 			ex.printStackTrace();
 		} catch(IOException e) {
@@ -847,7 +935,7 @@ public class PreprocessForWord2Vec {
 	public void removeStopWords(String folder) {
 		try {
 			//String[] preproFiles = {"re.prepro", "code.prepro", "commit.prepro"};
-			String[] preproFiles = {"description.prepro_stem", "re.prepro_stem", "code.prepro_stem"};
+			String[] preproFiles = {"projectName.prepro_stem", "description.prepro_stem", "re.prepro_stem", "code.prepro_stem"};
 			System.out.println("start remove stopWords...");
 			File dir = new File(folder);
 			StringBuilder sb = new StringBuilder();
@@ -865,7 +953,6 @@ public class PreprocessForWord2Vec {
 			initialStopWords = (HashSet)ois.readObject(); ois.close(); fis.close();
 			
 			PrintWriter writer = new PrintWriter("projectWords_filtered.csv", "UTF-8");
-			
 			HashMap<String, Integer> singleProjectWords = new HashMap<String, Integer>();
 			
 			for(File f : dir.listFiles()){
@@ -986,8 +1073,91 @@ public class PreprocessForWord2Vec {
 		}
 	}
 	
-	public void rankWordsBasedOnTFIDF(String folder) {
-		
+	public void generateRankedWordsBasedOnTfidfForWmd(String folder, int topNum) {
+		try {
+			// load wordsDocFreq.HashMap
+			System.out.println("load wordsDocFreq.HashMap ");
+			FileInputStream fis = new FileInputStream("wordsDocFreq.HashMap"); ObjectInputStream ois = new ObjectInputStream(fis);
+			wordsDocFreq = (HashMap)ois.readObject(); ois.close(); fis.close();
+			// load wordsTermFreq.HashMap
+			System.out.println("load wordsTermFreq.HashMap ");
+			fis = new FileInputStream("wordsTermFreq.HashMap"); ois = new ObjectInputStream(fis);
+			wordsTermFreq = (HashMap)ois.readObject(); ois.close(); fis.close();
+			
+			File dir = new File(folder);
+			String[] preproFiles = {"projectName.prepro_stem_rs", "description.prepro_stem_rs", "re.prepro_stem_rs", "code.prepro_stem_rs"};
+			PrintWriter writer = new PrintWriter("docForWmd.txt", "UTF-8");
+			StringBuilder sb = new StringBuilder();
+			HashMap<String, Double> wordsTfInSingleProject = new HashMap<String, Double>();
+			HashMap<String, Double> wordsTfidfInSingleProject = new HashMap<String, Double>();
+			HashMap<String, Integer> wordsFrequenceInSingleFileOfProject = new HashMap<String, Integer>();
+			
+			for(File f : dir.listFiles()){
+				if(f.isDirectory()) {
+					wordsTfInSingleProject.clear();
+					wordsTfidfInSingleProject.clear();
+					for(int i = 0; i < preproFiles.length; i++) {
+						String preproFile = preproFiles[i];
+						if(new File(f, preproFile).exists()) {
+							wordsFrequenceInSingleFileOfProject.clear();
+							String line = new String(Files.readAllBytes(Paths.get(f.getAbsolutePath(), preproFile)));
+							String[] tokens = line.split(" ");
+							for(String token : tokens) {
+								if(!token.isEmpty()) {
+									if(!wordsTfInSingleProject.containsKey(token)) {
+										wordsTfInSingleProject.put(token, termsFrequencyWeight[i]);
+										wordsFrequenceInSingleFileOfProject.put(token, 1);
+									} else {
+										if(!wordsFrequenceInSingleFileOfProject.containsKey(token)) {
+											wordsTfInSingleProject.put(token, wordsTfInSingleProject.get(token) + termsFrequencyWeight[i]);
+											wordsFrequenceInSingleFileOfProject.put(token, 1);
+										} else if (wordsFrequenceInSingleFileOfProject.get(token) < upperLimitNumOfSingleWord) {
+											wordsTfInSingleProject.put(token, wordsTfInSingleProject.get(token) + termsFrequencyWeight[i]);
+											wordsFrequenceInSingleFileOfProject.put(token, wordsFrequenceInSingleFileOfProject.get(token) + 1);
+										}
+									}
+								}
+							}
+						}
+					}
+					/* caculate the tfidf = tf * idf = tf * log2(N/df). */
+					if(!wordsTfInSingleProject.isEmpty()) {
+						for(String token : wordsTfInSingleProject.keySet()) {
+							if(wordsDocFreq.containsKey(token)) {
+								double idf = (double)numProjects / (double)(wordsDocFreq.get(token)) + 1.0;
+								idf = Math.log(idf) / Math.log(2.0);
+								double tfidf = wordsTfInSingleProject.get(token) * idf;
+								wordsTfidfInSingleProject.put(token, tfidf);
+							} else {
+								System.out.println("---" + token + "- is not included..");
+							}
+						}
+						/* rank the words based on their value of tfidf. */
+						Map<String, Double> sortedWordsTfidfInSingleProject = sortByComparatorDouble(wordsTfidfInSingleProject);
+						/* output the topNum tokens for WMD */
+						int i = 0;
+						sb.setLength(0);
+						PrintWriter rankedWordsInProject = new PrintWriter(new File(f, "rankedWordsInProject.txt"), "UTF-8");
+						for(String token : sortedWordsTfidfInSingleProject.keySet()) {
+							if(i < topNum) { sb.append(token); sb.append(" "); }
+							i++; rankedWordsInProject.println(token + "," + String.valueOf(sortedWordsTfidfInSingleProject.get(token)));
+						}
+						rankedWordsInProject.close();
+						writer.println("\"" + String.valueOf(projectsNo.get(f.getName())) + "\"" + "\t" + sb.toString());
+					} else {
+						System.out.println("No words for WMD: " + f.getName());
+					}
+				}
+			}
+			writer.close();
+			System.out.println("Finish generate Ranked Words Based On TF-IDF For Wmd !! output-> docForWmd.txt ");
+		} catch (FileNotFoundException ex) {
+			ex.printStackTrace();
+		} catch (IOException e) {
+			e.printStackTrace();
+		} catch(ClassNotFoundException c) {
+			System.out.println("Class not found"); c.printStackTrace(); return;
+		}
 	}
 	
 	// sort HashMap by value
@@ -1028,13 +1198,45 @@ public class PreprocessForWord2Vec {
 		return sortedMap;
 	}
 	
+	public void copyProjectsPreprosToNewFolder(String folder) {
+		try {
+			File newDir = new File("javaProjectsPrepros");
+			if(newDir.exists()) deleteDirectory(newDir);
+			newDir.mkdir();
+			File dir = new File(folder);
+			String[] preproFiles = {"projectName", "description", "re", "code"};
+			String[] preproFileTypes = {".prepro", ".prepro_stem", ".prepro_stem_rs"};
+			for(File f : dir.listFiles()) {
+				if(f.isDirectory()) {
+					System.out.println("copy project: " + f.getName());
+					File projectDir = new File(newDir, f.getName());
+					projectDir.mkdir();
+					for(String preproFile : preproFiles) {
+						for(String preproFileType : preproFileTypes) {
+							File originalFile = new File(f, preproFile + preproFileType);
+							if(originalFile.exists()) {
+								File targetFile = new File(projectDir, preproFile + preproFileType);
+								Files.copy(originalFile.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+							}
+						}	
+					}
+				}
+			}
+			System.out.println("Finished copy Projects Prepro Files To NewFolder: javaProjectsPrepros");
+		} catch (FileNotFoundException ex) {
+			ex.printStackTrace();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+	
 	public static void main(String[] args) throws IOException{
 		if(args.length != 1) {
 			System.out.println("input command : java PreprocessForWord2Vec folder");
 			System.exit(0);
 		}
 		PreprocessForWord2Vec preprocess = new PreprocessForWord2Vec();
-		preprocess.numProjects = new File(args[0]).listFiles().length;
+		preprocess.numOfProjects(args[0]);
 		//preprocess.removeProjectsWithNoReadme(args[0]);
 		//preprocess.removeBigProjects(300.0, args[0]);
 		//preprocess.downloadDescriptions(args[0]);
@@ -1042,13 +1244,15 @@ public class PreprocessForWord2Vec {
 		//preprocess.removeProjectsWithNoDescription(args[0]);
 		//preprocess.filterOmittedProjects(args[0], 300.0);
 		//preprocess.parseAndStemProjects(args[0]);
-		// preprocess.numOfProjects(args[0]);
+		//preprocess.parseAndStemProjectsName(args[0]);
+		//preprocess.copyProjectsPreprosToNewFolder(args[0]);
+		//preprocess.removeTabSpace(args[0]);
 		preprocess.wordsStatics(args[0]);
 		preprocess.generateStopWords("english.stop", 0.15);
 		preprocess.removeStopWords(args[0]);
 		preprocess.generateDocForWord2Vec(args[0], "forWord2Vec");
 		preprocess.generateDocsForLda(args[0], "forLda");
-		preprocess.rankWordsBasedOnTFIDF(args[0]);
+		preprocess.generateRankedWordsBasedOnTfidfForWmd(args[0], 30);
 		System.out.println("Done ");
 	}
 }
